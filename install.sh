@@ -165,7 +165,6 @@ collect_config() {
     echo -e "  ${Y}Make sure:${NC}"
     echo "    1. HyperAI app is running"
     echo "    2. Settings > External Access is ON"
-    echo "    3. API Key is set in the app"
     echo ""
 
     PROXY_URL="http://127.0.0.1:8317"
@@ -189,13 +188,9 @@ collect_config() {
     [[ "$PROXY_URL" == "http://:8317" ]] && { err "Proxy URL is required."; exit 1; }
     echo ""
 
-    echo -e "  ${C}API Key${NC} (ask your server admin)"
-    while true; do
-      read -r -p "  API Key [${API_KEY:-}]: " input
-      API_KEY="${input:-${API_KEY:-}}"
-      [[ -n "$API_KEY" ]] && break
-      warn "API key is required to connect to the proxy."
-    done
+    echo -e "  ${C}API Key${NC} (optional — leave empty if server has no key)"
+    read -r -p "  API Key [${API_KEY:-(none)}]: " input
+    API_KEY="${input:-${API_KEY:-}}"
     echo ""
   fi
 

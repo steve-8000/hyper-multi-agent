@@ -131,12 +131,12 @@ class GoProxyManager: ObservableObject {
         if externalAccessEnabled {
             args.append("-external-access")
             args.append(contentsOf: ["-bind", "0.0.0.0"])
+            // API key is optional — if empty, external access works without auth
+            if !apiKey.isEmpty {
+                args.append(contentsOf: ["-api-key", apiKey])
+            }
         } else {
             args.append(contentsOf: ["-bind", "127.0.0.1"])
-        }
-
-        if !apiKey.isEmpty {
-            args.append(contentsOf: ["-api-key", apiKey])
         }
 
         if vercelEnabled && !vercelApiKey.isEmpty {
