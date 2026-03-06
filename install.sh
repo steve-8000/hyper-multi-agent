@@ -213,14 +213,8 @@ collect_config() {
     [[ "$PROXY_URL" == "http://:8317" ]] && { err "Proxy URL is required."; exit 1; }
     echo ""
 
-    # Ollama URL (client might use server's ollama too)
-    local proxy_host
-    proxy_host="$(python3 -c "from urllib.parse import urlparse; print(urlparse('$PROXY_URL').hostname or '')" 2>/dev/null || echo "")"
-    local default_ollama="http://${proxy_host}:11434"
-    echo -e "  ${C}Ollama Server URL${NC} (usually same server as proxy)"
-    read -r -p "  URL [${OLLAMA_URL:-$default_ollama}]: " input
-    OLLAMA_URL="$(normalize_url "${input:-${OLLAMA_URL:-$default_ollama}}" 11434)"
-    echo ""
+    # Client doesn't need Ollama URL — proxy handles all models including local Ollama
+    OLLAMA_URL=""
 
     # API Key (required for client)
     echo -e "  ${C}API Key${NC} (ask your server admin)"
@@ -400,9 +394,15 @@ try:
     with open(mcp_path) as f: mcp = json.load(f)
 except: mcp = {}
 mcp.setdefault("mcpServers", {})
+mcp_args = ["-proxy-url", "$PROXY_URL"]
+api_key = "$API_KEY"
+if api_key:
+    mcp_args += ["-api-key", api_key]
+else:
+    mcp_args += ["-ollama-url", "$OLLAMA_URL"]
 mcp["mcpServers"]["hyper-proxy"] = {
     "command": "$hyper_mcp",
-    "args": ["-proxy-url", "$PROXY_URL", "-ollama-url", "$OLLAMA_URL"]
+    "args": mcp_args
 }
 with open(mcp_path, "w") as f: json.dump(mcp, f, indent=2)
 
