@@ -326,7 +326,9 @@ case "${1:-start}" in
     if [[ -f "${PID}/backend.pid" ]] && kill -0 "$(cat "${PID}/backend.pid")" 2>/dev/null; then
       echo "[WARN] Backend already running (PID $(cat "${PID}/backend.pid"))"
     else
-      nohup "${BIN}/cli-proxy-api-plus" >> "${LOG}/backend.log" 2>&1 &
+      CONFIG="${HOME}/.cli-proxy-api/merged-config.yaml"
+      [[ ! -f "$CONFIG" ]] && CONFIG=""
+      nohup "${BIN}/cli-proxy-api-plus" ${CONFIG:+-config "$CONFIG"} >> "${LOG}/backend.log" 2>&1 &
       echo $! > "${PID}/backend.pid"
       echo "[OK] Backend started (PID $!)"
     fi
