@@ -64,7 +64,7 @@ do_uninstall() {
   echo "  - Claude Code registrations"
   echo ""
   read -r -p "Proceed? [y/N]: " confirm
-  [[ "${confirm,,}" == "y" ]] || { info "Cancelled."; exit 0; }
+  [[ "$(echo "$confirm" | tr '[:upper:]' '[:lower:]')" == "y" ]] || { info "Cancelled."; exit 0; }
 
   # Kill proxy if running
   for pf in "${PID_DIR}"/*.pid; do
@@ -141,6 +141,12 @@ collect_config() {
   echo "  Remote: http://<server-ip>:8317"
   read -r -p "  URL [${PROXY_URL:-http://127.0.0.1:8317}]: " input
   PROXY_URL="${input:-${PROXY_URL:-http://127.0.0.1:8317}}"
+  # Auto-add http:// if missing
+  [[ "$PROXY_URL" =~ ^https?:// ]] || PROXY_URL="http://${PROXY_URL}"
+  # Auto-add port if missing
+  if ! echo "$PROXY_URL" | grep -qE ':[0-9]+$'; then
+    PROXY_URL="${PROXY_URL}:8317"
+  fi
   echo ""
 
   # Ollama URL
@@ -148,6 +154,12 @@ collect_config() {
   echo "  Skip if not using local models."
   read -r -p "  URL [${OLLAMA_URL:-http://localhost:11434}]: " input
   OLLAMA_URL="${input:-${OLLAMA_URL:-http://localhost:11434}}"
+  # Auto-add http:// if missing
+  [[ "$OLLAMA_URL" =~ ^https?:// ]] || OLLAMA_URL="http://${OLLAMA_URL}"
+  # Auto-add port if missing
+  if ! echo "$OLLAMA_URL" | grep -qE ':[0-9]+$'; then
+    OLLAMA_URL="${OLLAMA_URL}:11434"
+  fi
   echo ""
 
   # API Key
@@ -176,11 +188,16 @@ collect_config() {
   header "  Configuration Summary"
   echo "  Proxy URL:  $PROXY_URL"
   echo "  Ollama URL: $OLLAMA_URL"
-  echo "  API Key:    ${API_KEY:+[set]}${API_KEY:-[not set]}"
+  if [[ -n "${API_KEY:-}" ]]; then
+    local masked="${API_KEY:0:8}...${API_KEY: -4}"
+    echo "  API Key:    [set] ${masked}"
+  else
+    echo "  API Key:    [not set]"
+  fi
   echo ""
   read -r -p "  Proceed with installation? [Y/n]: " confirm
   confirm="${confirm:-Y}"
-  [[ "${confirm,,}" =~ ^y$ ]] || { info "Cancelled."; exit 0; }
+  [[ "$(echo "$confirm" | tr '[:upper:]' '[:lower:]')" =~ ^y$ ]] || { info "Cancelled."; exit 0; }
 
   # Save state (private, never in repo)
   mkdir -p "$BASE_DIR"
