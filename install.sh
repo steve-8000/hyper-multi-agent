@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1090
 set -Eeuo pipefail
 
 # =============================================================================
@@ -90,7 +91,7 @@ done
   [[ "$(echo "${confirm:-N}" | tr '[:upper:]' '[:lower:]')" == "y" ]] || { info "Cancelled."; exit 0; }
 
   # Kill proxy
-  for pf in "${PID_DIR}"/*.pid 2>/dev/null; do
+  for pf in "${PID_DIR}"/*.pid; do
     [[ -f "$pf" ]] && kill "$(cat "$pf")" 2>/dev/null || true
   done
   rm -rf "$BASE_DIR" "$PLUGIN_CACHE"
@@ -170,7 +171,10 @@ select_mode() {
 # Interactive config
 # =============================================================================
 collect_config() {
+  # Load previous values for defaults, but preserve current INSTALL_MODE
+  local saved_mode="$INSTALL_MODE"
   [[ -f "$STATE_FILE" ]] && source "$STATE_FILE" 2>/dev/null || true
+  INSTALL_MODE="$saved_mode"
 
   if [[ "$INSTALL_MODE" == "server" ]]; then
     info "Server mode: proxy will run on this machine."
@@ -444,19 +448,25 @@ PYEOF
 verify() {
   local errors=0
 
+  # Check a file/binary exists
+  check_exists() {
+    local path="$1" label="$2"
+    if [[ -e "$path" ]]; then ok "$label"; else err "Missing: $label ($path)"; errors=$((errors+1)); fi
+  }
+
   # hyper-mcp always required
-  [[ -x "${BIN_DIR}/hyper-mcp" ]] && ok "hyper-mcp binary" || { err "Missing: hyper-mcp"; errors=$((errors+1)); }
+  check_exists "${BIN_DIR}/hyper-mcp" "hyper-mcp binary"
 
   # Server mode: check proxy binaries
   if [[ "$INSTALL_MODE" == "server" ]]; then
-    [[ -x "${BIN_DIR}/hyper-ai-proxy" ]] && ok "hyper-ai-proxy binary" || { err "Missing: hyper-ai-proxy"; errors=$((errors+1)); }
-    [[ -x "${BIN_DIR}/cli-proxy-api-plus" ]] && ok "cli-proxy-api-plus binary" || { err "Missing: cli-proxy-api-plus"; errors=$((errors+1)); }
-    [[ -x "${BASE_DIR}/start-proxy.sh" ]] && ok "start-proxy.sh" || { err "Missing: start-proxy.sh"; errors=$((errors+1)); }
+    check_exists "${BIN_DIR}/hyper-ai-proxy" "hyper-ai-proxy binary"
+    check_exists "${BIN_DIR}/cli-proxy-api-plus" "cli-proxy-api-plus binary"
+    check_exists "${BASE_DIR}/start-proxy.sh" "start-proxy.sh"
   fi
 
   # Plugin + config
-  [[ -f "${PLUGIN_CACHE}/.claude-plugin/plugin.json" ]] && ok "Plugin files" || { err "Missing: plugin files"; errors=$((errors+1)); }
-  [[ -f "${MCP_JSON}" ]] && ok "mcp.json" || { err "Missing: mcp.json"; errors=$((errors+1)); }
+  check_exists "${PLUGIN_CACHE}/.claude-plugin/plugin.json" "Plugin files"
+  check_exists "${MCP_JSON}" "mcp.json"
 
   # Connectivity test
   if curl -fsSm 3 "${PROXY_URL}" >/dev/null 2>&1 || curl -fsSm 3 "${PROXY_URL}/health" >/dev/null 2>&1; then
@@ -509,10 +519,9 @@ main() {
     echo ""
   fi
 
-  # Step N-1: Plugin
-  local plugin_step=$total_steps
+  # Plugin step
+  local plugin_step=$((total_steps - 0))
   [[ "$INSTALL_MODE" == "server" ]] && plugin_step=$((total_steps - 1))
-  # Actually let's just use the last two steps
   info "[${plugin_step}/${total_steps}] Claude Code plugin"
   install_plugin
   configure_claude
