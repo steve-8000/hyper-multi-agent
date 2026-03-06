@@ -1,0 +1,8 @@
+{
+  "name": "hyper-multi-agent",
+  "description": "Multi-agent parallel orchestration via Hyper-Proxy MCP. Claude acts as control tower: plans, decomposes tasks, and dispatches independent subtasks to coder-best (complex code) and coder-fast (simple tasks) in maximum parallel MCP calls. review-deep for architecture review.",
+  "author": {
+    "name": "Steve",
+    "email": "steve@hyper.ai"
+  }
+}

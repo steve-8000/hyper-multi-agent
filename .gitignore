@@ -1,0 +1,14 @@
+# User-specific config (contains IPs, API keys)
+state.env
+config.env
+*.pid
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Never commit secrets
+.env
+.env.*
+mcp.json
