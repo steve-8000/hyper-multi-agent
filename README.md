@@ -1,41 +1,6 @@
 # Hyper Multi-Agent — Claude Code Plugin
 
 Claude Code를 **컨트롤타워**로 활용하여 여러 AI 모델에 작업을 **무제한 병렬 분배**하는 올인원 플러그인입니다.
-`./install.sh` 하나로 프록시 서버, MCP 브릿지, Claude Code 플러그인까지 모든 환경을 자동 구성합니다.
-
-## Quick Install
-
-### Server (프록시를 호스팅하는 머신)
-
-```bash
-git clone https://github.com/steve-8000/hyper-multi-agent.git
-cd hyper-multi-agent
-./install.sh --server
-```
-
-설치 후 프록시 시작:
-```bash
-~/.hyper-multi-agent/start-proxy.sh start
-```
-
-설치가 끝나면 팀원에게 공유할 정보가 출력됩니다:
-```
-  Proxy URL: http://<your-ip>:8317
-  API Key:   hyper-xxxxxxxx...
-```
-
-### Client (팀원 / 원격 접속자)
-
-```bash
-git clone https://github.com/steve-8000/hyper-multi-agent.git
-cd hyper-multi-agent
-./install.sh --client
-```
-
-서버 관리자에게 받은 **Proxy URL**과 **API Key**만 입력하면 끝입니다.
-`hyper-mcp` 바이너리 하나만 다운로드되고, 프록시 서버는 설치하지 않습니다.
-
-> IP 주소와 API 키는 로컬(`~/.hyper-multi-agent/state.env`)에만 저장되며, 레포에는 절대 포함되지 않습니다.
 
 ## Architecture
 
@@ -60,44 +25,63 @@ User: "REST API with auth 만들어줘"
     Done
 ```
 
+## System Overview
+
+```
+┌─────────────────────────────────────────────────┐
+│  HyperAI App (macOS 메뉴바 앱)                    │
+│  ├── cli-proxy-api-plus (8318) — OAuth, 모델 라우팅 │
+│  ├── hyper-ai-proxy (8317) — 외부접속, API Key 인증  │
+│  └── Settings UI — 프로바이더, 외부접속, Ollama 설정   │
+└────────────────────┬────────────────────────────┘
+                     │ port 8317
+        ┌────────────┴────────────┐
+        │                         │
+   Local (Server)            Remote (Client)
+   hyper-mcp ──→ 127.0.0.1   hyper-mcp ──→ IP:8317
+        │                         │ + API Key
+   Claude Code                Claude Code
+```
+
 ### 3-Tier 모델 역할 분담
 
 | Tier | Name | Model | Alias | 용도 |
 |------|------|-------|-------|------|
 | - | **Control Tower** | Claude (현재 세션) | - | 계획, 분해, 분배, 통합 |
 | High | **Hyper-AI(High)** | GPT-5.3-Codex | `coder-best` | 복잡한 알고리즘, 핵심 로직, 보안 코드 |
-| Mid | **Hyper-AI(Mid)** | GPT-5.3-Codex-Spark | `coder-fast` | 표준 패턴, API 엔드포인트, 컴포넌트 로직 |
+| Mid | **Hyper-AI(Mid)** | GPT-5.3-Codex-Spark | `coder-fast` | 표준 패턴, API 엔드포인트, 컴포넌트 |
 | Low | **Hyper-AI(Low)** | Qwen 3.5:35b (local) | `local-cheap` | 보일러플레이트, 설정, 타입, 유틸 |
 | Review | **Review-Deep** | Claude Opus (via proxy) | `review-deep` | 아키텍처 리뷰, 설계 검증 |
 
-### 핵심 규칙
-- 같은 작업을 여러 모델에 중복 시키지 않음
-- 독립적인 작업은 전부 동시 병렬 호출 (3개 티어에 분산)
-- Claude는 코드를 직접 작성하지 않고 모델에 위임
-- 복잡도에 따라 High/Mid/Low 적절히 배분
+## Quick Start
 
-## What `install.sh` Does
+### Server (프록시 호스팅 머신)
 
-### Server mode (`--server`)
+1. **HyperAI 앱 실행** → Settings에서:
+   - External Access: ON
+   - API Key 설정
+   - Start 클릭
 
-| 단계 | 내용 |
-|------|------|
-| Mode | 서버/클라이언트 선택 |
-| Preflight | python3, curl 확인, 플랫폼 감지 |
-| Config | Ollama URL, API Key 입력 (자동 생성 가능) |
-| Binaries | hyper-mcp + hyper-ai-proxy + cli-proxy-api-plus 설치 |
-| Proxy | start-proxy.sh 생성 (start/stop/restart/status) |
-| Plugin | Claude Code 플러그인 + mcp.json + 권한 설정 |
-| Verify | 바이너리, 플러그인, 프록시 연결 확인 |
+2. **Claude Code 플러그인 설치:**
+```bash
+git clone https://github.com/steve-8000/hyper-multi-agent.git
+cd hyper-multi-agent
+./install.sh --server
+```
 
-### Client mode (`--client`)
+3. 팀원에게 공유:
+   - Proxy URL: `http://<your-ip>:8317`
+   - API Key: (앱 설정에서 확인)
 
-| 단계 | 내용 |
-|------|------|
-| Config | Proxy URL + API Key 입력 (서버 관리자에게 받은 값) |
-| Binary | **hyper-mcp만** 다운로드 (프록시 바이너리 불필요) |
-| Plugin | Claude Code 플러그인 + mcp.json + 권한 설정 |
-| Verify | hyper-mcp, 플러그인, 프록시 연결 확인 |
+### Client (팀원 / 원격 접속자)
+
+```bash
+git clone https://github.com/steve-8000/hyper-multi-agent.git
+cd hyper-multi-agent
+./install.sh --client
+```
+
+서버 관리자에게 받은 **Proxy URL**과 **API Key**만 입력하면 끝.
 
 ## Commands
 
@@ -106,58 +90,63 @@ User: "REST API with auth 만들어줘"
 | `/hyper-dev <task>` | 작업 분해 → 무제한 병렬 MCP 호출 → 결과 통합 |
 | `/hyper-review <file>` | review-deep 모델로 아키텍처 리뷰 |
 
-`multi-agent-dispatch` 스킬이 모든 코딩 작업에서 자동 활성화되어, 명시적 커맨드 없이도 멀티에이전트 패턴이 적용됩니다.
+`multi-agent-dispatch` 스킬이 모든 코딩 작업에서 자동 활성화됩니다.
 
-## Proxy Management
+## Building from Source
 
 ```bash
-# 시작
-~/.hyper-multi-agent/start-proxy.sh start
+cd app
 
-# 상태 확인
-~/.hyper-multi-agent/start-proxy.sh status
+# Go 바이너리만 빌드
+./build.sh go
 
-# 중지
-~/.hyper-multi-agent/start-proxy.sh stop
+# 전체 (Go + Swift app)
+./build.sh app
 
-# 재시작
-~/.hyper-multi-agent/start-proxy.sh restart
+# 크로스 컴파일 + 앱 패키징
+./build.sh all
+```
+
+## Project Structure
+
+```
+hyper-multi-agent/
+├── app/                          # HyperAI 앱 소스
+│   ├── Package.swift             # Swift 패키지
+│   ├── Sources/                  # Swift 메뉴바 앱
+│   │   ├── AppDelegate.swift
+│   │   ├── GoProxyManager.swift  # hyper-ai-proxy 프로세스 관리
+│   │   ├── ServerManager.swift   # cli-proxy-api-plus 프로세스 관리
+│   │   ├── SettingsView.swift    # SwiftUI 설정 UI
+│   │   └── Resources/           # 번들 리소스 (아이콘, config, 바이너리)
+│   ├── go-proxy/                # Go 소스
+│   │   ├── cmd/
+│   │   │   ├── hyper-ai-proxy/  # 리버스 프록시 + 인증
+│   │   │   └── hyper-mcp/       # MCP stdio 브릿지
+│   │   └── internal/
+│   │       ├── proxy/           # HTTP 프록시, 라우팅, 사용량 추적
+│   │       ├── mcp/             # MCP JSON-RPC 서버
+│   │       └── ollama/          # Ollama 클라이언트
+│   └── build.sh                 # 빌드 스크립트
+├── .claude-plugin/              # Claude Code 플러그인 메타데이터
+├── commands/                    # /hyper-dev, /hyper-review
+├── skills/                      # multi-agent-dispatch 자동 스킬
+├── install.sh                   # Claude Code 플러그인 설치
+└── README.md
 ```
 
 ## Reconfigure / Uninstall
 
 ```bash
-# IP, API Key 변경
-./install.sh --reconfigure
-
-# 완전 제거
-./install.sh --uninstall
+./install.sh --reconfigure   # 접속 설정 변경
+./install.sh --uninstall     # 완전 제거
 ```
 
 ## Prerequisites
 
 - **Claude Code CLI** (최신 버전)
-- **python3** (JSON 설정 파일 처리)
-- **curl** (바이너리 다운로드)
-- **Ollama** (선택 — 로컬 `coder-fast` 사용 시)
-
-## Plugin Structure
-
-```
-hyper-multi-agent/
-├── .claude-plugin/plugin.json    # 플러그인 메타데이터
-├── commands/
-│   ├── hyper-dev.md              # /hyper-dev 커맨드
-│   └── hyper-review.md           # /hyper-review 커맨드
-├── skills/
-│   └── multi-agent-dispatch/
-│       └── SKILL.md              # 자동 활성화 스킬
-├── proxy/
-│   └── config.yaml.template      # 프록시 설정 템플릿
-├── install.sh                    # 원클릭 설치
-├── README.md
-└── LICENSE
-```
+- **python3** + **curl**
+- **HyperAI App** (서버 모드) 또는 서버 접속 정보 (클라이언트 모드)
 
 ## License
 

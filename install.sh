@@ -3,11 +3,10 @@
 set -Eeuo pipefail
 
 # =============================================================================
-# Hyper Multi-Agent — One-Click Installer
+# Hyper Multi-Agent — Installer
 #
-# Two modes:
-#   Server Mode: Runs proxy + installs plugin (the host machine)
-#   Client Mode: Installs hyper-mcp + plugin only (connects to remote proxy)
+# Server: HyperAI 앱이 프록시를 관리. 이 스크립트는 Claude Code 플러그인만 설치.
+# Client: hyper-mcp + Claude Code 플러그인 설치 (원격 프록시에 연결)
 # =============================================================================
 
 VERSION="1.0.0"
@@ -16,8 +15,6 @@ REPO="steve-8000/hyper-multi-agent"
 # Directories
 BASE_DIR="${HOME}/.hyper-multi-agent"
 BIN_DIR="${BASE_DIR}/bin"
-LOG_DIR="${BASE_DIR}/logs"
-PID_DIR="${BASE_DIR}/pids"
 STATE_FILE="${BASE_DIR}/state.env"
 
 CLAUDE_DIR="${HOME}/.claude"
@@ -38,9 +35,8 @@ header()  { echo -e "${C}$*${NC}"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Globals
-INSTALL_MODE=""  # server or client
+INSTALL_MODE=""
 PROXY_URL=""
-OLLAMA_URL=""
 API_KEY=""
 OS=""
 ARCH=""
@@ -60,8 +56,8 @@ while [[ $# -gt 0 ]]; do
 Usage: ./install.sh [MODE] [OPTIONS]
 
 Modes:
-  --server        Install proxy server + plugin (host machine)
-  --client        Install plugin only (connects to remote proxy)
+  --server        Server mode (HyperAI app runs proxy, this installs Claude Code plugin)
+  --client        Client mode (connects to remote proxy)
   (no flag)       Interactive mode selection
 
 Options:
@@ -82,21 +78,10 @@ done
   echo ""
   header "  Uninstalling Hyper Multi-Agent"
   echo ""
-  warn "This will remove:"
-  echo "  - ${BASE_DIR}"
-  echo "  - ${PLUGIN_CACHE}"
-  echo "  - Claude Code registrations"
-  echo ""
   read -r -p "  Proceed? [y/N]: " confirm
   [[ "$(echo "${confirm:-N}" | tr '[:upper:]' '[:lower:]')" == "y" ]] || { info "Cancelled."; exit 0; }
 
-  # Kill proxy
-  for pf in "${PID_DIR}"/*.pid; do
-    [[ -f "$pf" ]] && kill "$(cat "$pf")" 2>/dev/null || true
-  done
   rm -rf "$BASE_DIR" "$PLUGIN_CACHE"
-
-  # Clean JSON configs
   for FILE in "$INSTALLED_JSON" "$SETTINGS_JSON" "$MCP_JSON"; do
     [[ -f "$FILE" ]] && python3 -c "
 import json
@@ -150,73 +135,60 @@ select_mode() {
   echo ""
   echo -e "  ${W}Choose installation mode:${NC}"
   echo ""
-  echo -e "  ${G}[1] Server${NC} — I'm running the proxy on this machine"
-  echo "      Installs: proxy server + MCP bridge + Claude Code plugin"
-  echo "      For: the host machine that serves AI model requests"
+  echo -e "  ${G}[1] Server${NC} — I'm running HyperAI app on this machine"
+  echo "      The app manages all proxy servers."
+  echo "      This installs the Claude Code plugin only."
   echo ""
-  echo -e "  ${B}[2] Client${NC} — I'm connecting to an existing proxy server"
-  echo "      Installs: MCP bridge + Claude Code plugin only"
-  echo "      For: anyone who wants to use a remote proxy"
+  echo -e "  ${B}[2] Client${NC} — I'm connecting to a remote proxy"
+  echo "      Installs: MCP bridge + Claude Code plugin"
   echo ""
   read -r -p "  Select [1/2]: " choice
   case "$choice" in
     1|server|s) INSTALL_MODE="server" ;;
     2|client|c) INSTALL_MODE="client" ;;
-    *) INSTALL_MODE="client" ;;  # default to client (most common)
+    *) INSTALL_MODE="client" ;;
   esac
   echo ""
 }
 
 # =============================================================================
-# Interactive config
+# Configuration
 # =============================================================================
 collect_config() {
-  # Load previous values for defaults, but preserve current INSTALL_MODE
   local saved_mode="$INSTALL_MODE"
   [[ -f "$STATE_FILE" ]] && source "$STATE_FILE" 2>/dev/null || true
   INSTALL_MODE="$saved_mode"
 
   if [[ "$INSTALL_MODE" == "server" ]]; then
-    info "Server mode: proxy will run on this machine."
+    info "Server mode: HyperAI app manages the proxy."
     echo ""
-
-    # Ollama URL (server might have local ollama)
-    echo -e "  ${C}Ollama Server URL${NC} (for Hyper-AI(Low) local models)"
-    read -r -p "  URL [${OLLAMA_URL:-http://localhost:11434}]: " input
-    OLLAMA_URL="$(normalize_url "${input:-${OLLAMA_URL:-http://localhost:11434}}" 11434)"
-    echo ""
-
-    # API Key for external access
-    echo -e "  ${C}API Key${NC} for client authentication"
-    echo "  Clients will use this key to connect to your proxy."
-    read -r -p "  API Key [${API_KEY:-(auto-generate)}]: " input
-    if [[ -n "$input" ]]; then
-      API_KEY="$input"
-    elif [[ -z "${API_KEY:-}" ]]; then
-      API_KEY="hyper-$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32)"
-      info "Auto-generated API key"
-    fi
+    echo -e "  ${Y}Make sure:${NC}"
+    echo "    1. HyperAI app is running"
+    echo "    2. Settings > External Access is ON"
+    echo "    3. API Key is set in the app"
     echo ""
 
     PROXY_URL="http://127.0.0.1:8317"
+
+    # Check if proxy is running
+    if curl -fsSm 2 http://127.0.0.1:8317/internal/health >/dev/null 2>&1; then
+      ok "Proxy running on port 8317"
+    else
+      warn "Proxy not responding. Open HyperAI app and click Start."
+    fi
+    echo ""
 
   else
     info "Client mode: connecting to a remote proxy server."
     echo ""
 
-    # Proxy URL (remote server)
     echo -e "  ${C}Proxy Server URL${NC}"
     echo "  Ask your server admin for the IP and port."
-    echo "  Example: http://203.0.113.50:8317 or just 203.0.113.50"
     read -r -p "  URL [${PROXY_URL:-}]: " input
     PROXY_URL="$(normalize_url "${input:-${PROXY_URL:-}}" 8317)"
     [[ "$PROXY_URL" == "http://:8317" ]] && { err "Proxy URL is required."; exit 1; }
     echo ""
 
-    # Client doesn't need Ollama URL — proxy handles all models including local Ollama
-    OLLAMA_URL=""
-
-    # API Key (required for client)
     echo -e "  ${C}API Key${NC} (ask your server admin)"
     while true; do
       read -r -p "  API Key [${API_KEY:-}]: " input
@@ -231,10 +203,7 @@ collect_config() {
   header "  Configuration Summary"
   echo "  Mode:       ${INSTALL_MODE}"
   echo "  Proxy URL:  ${PROXY_URL}"
-  echo "  Ollama URL: ${OLLAMA_URL}"
-  if [[ -n "${API_KEY:-}" ]]; then
-    echo "  API Key:    ${API_KEY:0:8}...${API_KEY: -4}"
-  fi
+  [[ -n "${API_KEY:-}" ]] && echo "  API Key:    ${API_KEY:0:8}...${API_KEY: -4}"
   echo ""
   read -r -p "  Proceed? [Y/n]: " confirm
   [[ "$(echo "${confirm:-Y}" | tr '[:upper:]' '[:lower:]')" =~ ^y$ ]] || { info "Cancelled."; exit 0; }
@@ -244,14 +213,13 @@ collect_config() {
   cat > "$STATE_FILE" <<EOF
 INSTALL_MODE="${INSTALL_MODE}"
 PROXY_URL="${PROXY_URL}"
-OLLAMA_URL="${OLLAMA_URL}"
 API_KEY="${API_KEY}"
 EOF
   chmod 600 "$STATE_FILE"
 }
 
 # =============================================================================
-# Binary management
+# Binary management (hyper-mcp only)
 # =============================================================================
 find_binary() {
   local name="$1"
@@ -264,109 +232,30 @@ find_binary() {
 
 download_binary() {
   local bin="$1"
+  local url="https://github.com/${REPO}/releases/latest/download/${bin}-${OS}-${ARCH}"
   local tmpdir
   tmpdir="$(mktemp -d)"
-  local url="https://github.com/${REPO}/releases/latest/download/${bin}-${OS}-${ARCH}"
-
   if curl -fsSL "$url" -o "${tmpdir}/${bin}" 2>/dev/null; then
     cp "${tmpdir}/${bin}" "${BIN_DIR}/${bin}"
     chmod +x "${BIN_DIR}/${bin}"
     ok "Downloaded ${bin}"
   else
     err "Failed to download ${bin} from ${url}"
-    err "Add it manually to ${BIN_DIR}/"
   fi
   rm -rf "$tmpdir"
 }
 
-ensure_binary() {
-  local bin="$1"
-  if [[ -x "${BIN_DIR}/${bin}" ]]; then
-    ok "${bin} ready"
-  elif found="$(find_binary "$bin")"; then
-    cp "$found" "${BIN_DIR}/${bin}"
-    chmod +x "${BIN_DIR}/${bin}"
-    ok "${bin} copied from ${found}"
-  else
-    download_binary "$bin"
-  fi
-}
-
-ensure_binaries() {
+ensure_hyper_mcp() {
   mkdir -p "$BIN_DIR"
-
-  # hyper-mcp is always needed (MCP bridge for Claude Code)
-  ensure_binary "hyper-mcp"
-
-  # Server mode: also need proxy binaries
-  if [[ "$INSTALL_MODE" == "server" ]]; then
-    ensure_binary "hyper-ai-proxy"
-    ensure_binary "cli-proxy-api-plus"
+  if [[ -x "${BIN_DIR}/hyper-mcp" ]]; then
+    ok "hyper-mcp ready"
+  elif found="$(find_binary "hyper-mcp")"; then
+    cp "$found" "${BIN_DIR}/hyper-mcp"
+    chmod +x "${BIN_DIR}/hyper-mcp"
+    ok "hyper-mcp copied from ${found}"
+  else
+    download_binary "hyper-mcp"
   fi
-}
-
-# =============================================================================
-# Proxy server scripts (server mode only)
-# =============================================================================
-generate_proxy_scripts() {
-  [[ "$INSTALL_MODE" != "server" ]] && return
-  mkdir -p "$LOG_DIR" "$PID_DIR"
-
-  cat > "${BASE_DIR}/start-proxy.sh" <<'STARTEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-BASE="${HOME}/.hyper-multi-agent"
-source "${BASE}/state.env" 2>/dev/null || true
-BIN="${BASE}/bin"; LOG="${BASE}/logs"; PID="${BASE}/pids"
-mkdir -p "$LOG" "$PID"
-
-case "${1:-start}" in
-  start)
-    # Backend (cli-proxy-api-plus on 8318)
-    if [[ -f "${PID}/backend.pid" ]] && kill -0 "$(cat "${PID}/backend.pid")" 2>/dev/null; then
-      echo "[WARN] Backend already running (PID $(cat "${PID}/backend.pid"))"
-    else
-      CONFIG="${HOME}/.cli-proxy-api/merged-config.yaml"
-      [[ ! -f "$CONFIG" ]] && CONFIG=""
-      nohup "${BIN}/cli-proxy-api-plus" ${CONFIG:+-config "$CONFIG"} >> "${LOG}/backend.log" 2>&1 &
-      echo $! > "${PID}/backend.pid"
-      echo "[OK] Backend started (PID $!)"
-    fi
-    sleep 1
-    # Frontend (hyper-ai-proxy on 8317)
-    if [[ -f "${PID}/frontend.pid" ]] && kill -0 "$(cat "${PID}/frontend.pid")" 2>/dev/null; then
-      echo "[WARN] Frontend already running (PID $(cat "${PID}/frontend.pid"))"
-    else
-      ARGS=("-port" "8317")
-      [[ -n "${API_KEY:-}" ]] && ARGS+=("-external-access" "-api-key" "$API_KEY" "-bind" "0.0.0.0")
-      [[ -n "${OLLAMA_URL:-}" ]] && ARGS+=("-ollama-enabled" "-ollama-url" "$OLLAMA_URL")
-      nohup "${BIN}/hyper-ai-proxy" "${ARGS[@]}" >> "${LOG}/frontend.log" 2>&1 &
-      echo $! > "${PID}/frontend.pid"
-      echo "[OK] Frontend started (PID $!)"
-    fi
-    echo ""
-    echo "Proxy running on port 8317 (external access: ${API_KEY:+enabled}${API_KEY:-disabled})"
-    echo "Logs: ${LOG}/"
-    ;;
-  stop)
-    for svc in backend frontend; do
-      [[ -f "${PID}/${svc}.pid" ]] && {
-        kill "$(cat "${PID}/${svc}.pid")" 2>/dev/null && echo "[OK] ${svc} stopped" || echo "[INFO] ${svc} not running"
-        rm -f "${PID}/${svc}.pid"
-      }
-    done ;;
-  restart) "$0" stop; sleep 1; "$0" start ;;
-  status)
-    for svc in backend frontend; do
-      if [[ -f "${PID}/${svc}.pid" ]] && kill -0 "$(cat "${PID}/${svc}.pid")" 2>/dev/null; then
-        echo "[RUNNING] ${svc} (PID $(cat "${PID}/${svc}.pid"))"
-      else echo "[STOPPED] ${svc}"; fi
-    done ;;
-  *) echo "Usage: $0 {start|stop|restart|status}" ;;
-esac
-STARTEOF
-  chmod +x "${BASE_DIR}/start-proxy.sh"
-  ok "Generated start-proxy.sh"
 }
 
 # =============================================================================
@@ -400,8 +289,6 @@ mcp_args = ["-proxy-url", "$PROXY_URL"]
 api_key = "$API_KEY"
 if api_key:
     mcp_args += ["-api-key", api_key]
-else:
-    mcp_args += ["-ollama-url", "$OLLAMA_URL"]
 mcp["mcpServers"]["hyper-proxy"] = {
     "command": "$hyper_mcp",
     "args": mcp_args
@@ -449,33 +336,25 @@ PYEOF
 # =============================================================================
 verify() {
   local errors=0
-
-  # Check a file/binary exists
   check_exists() {
     local path="$1" label="$2"
     if [[ -e "$path" ]]; then ok "$label"; else err "Missing: $label ($path)"; errors=$((errors+1)); fi
   }
 
-  # hyper-mcp always required
   check_exists "${BIN_DIR}/hyper-mcp" "hyper-mcp binary"
-
-  # Server mode: check proxy binaries
-  if [[ "$INSTALL_MODE" == "server" ]]; then
-    check_exists "${BIN_DIR}/hyper-ai-proxy" "hyper-ai-proxy binary"
-    check_exists "${BIN_DIR}/cli-proxy-api-plus" "cli-proxy-api-plus binary"
-    check_exists "${BASE_DIR}/start-proxy.sh" "start-proxy.sh"
-  fi
-
-  # Plugin + config
   check_exists "${PLUGIN_CACHE}/.claude-plugin/plugin.json" "Plugin files"
   check_exists "${MCP_JSON}" "mcp.json"
 
-  # Connectivity test
-  if curl -fsSm 3 "${PROXY_URL}" >/dev/null 2>&1 || curl -fsSm 3 "${PROXY_URL}/health" >/dev/null 2>&1; then
+  # Proxy connectivity
+  local auth_header=""
+  [[ -n "${API_KEY:-}" ]] && auth_header="-H Authorization: Bearer ${API_KEY}"
+  if curl -fsSm 3 ${auth_header} "${PROXY_URL}/v1/models" >/dev/null 2>&1; then
+    ok "Proxy reachable at ${PROXY_URL}"
+  elif curl -fsSm 3 ${auth_header} "${PROXY_URL}/internal/health" >/dev/null 2>&1; then
     ok "Proxy reachable at ${PROXY_URL}"
   else
     if [[ "$INSTALL_MODE" == "server" ]]; then
-      warn "Proxy not running yet — start with: ~/.hyper-multi-agent/start-proxy.sh start"
+      warn "Proxy not responding — open HyperAI app and start the server"
     else
       warn "Proxy not reachable at ${PROXY_URL} — check server is running"
     fi
@@ -493,68 +372,46 @@ main() {
   header "  Hyper Multi-Agent Installer v${VERSION}"
   header "=========================================="
 
-  # Step 1: Mode + Preflight
   select_mode
-  local total_steps=4
-  [[ "$INSTALL_MODE" == "server" ]] && total_steps=5
 
-  info "[1/${total_steps}] Preflight"
+  info "[1/3] Preflight"
   command -v python3 >/dev/null || { err "python3 required"; exit 1; }
   command -v curl >/dev/null || { err "curl required"; exit 1; }
   detect_platform
   echo ""
 
-  # Step 2: Config
-  info "[2/${total_steps}] Configuration"
+  info "[2/3] Configuration"
   collect_config
   echo ""
 
-  # Step 3: Binaries
-  info "[3/${total_steps}] Binaries"
-  ensure_binaries
-  echo ""
-
-  # Step 4 (server only): Proxy scripts
-  if [[ "$INSTALL_MODE" == "server" ]]; then
-    info "[4/${total_steps}] Proxy server"
-    generate_proxy_scripts
-    echo ""
-  fi
-
-  # Plugin step
-  local plugin_step=$((total_steps - 0))
-  [[ "$INSTALL_MODE" == "server" ]] && plugin_step=$((total_steps - 1))
-  info "[${plugin_step}/${total_steps}] Claude Code plugin"
+  info "[3/3] Claude Code plugin"
+  ensure_hyper_mcp
   install_plugin
   configure_claude
   echo ""
 
-  # Step N: Verify — skip numbering, just verify
   info "Verification"
   verify || true
 
-  # Summary
   echo ""
   header "=========================================="
   header "  Installation Complete! (${INSTALL_MODE} mode)"
   header "=========================================="
   echo ""
-  echo "  Proxy URL:  ${PROXY_URL}"
-  echo "  Ollama URL: ${OLLAMA_URL}"
-  echo "  API Key:    ${API_KEY:0:8}...${API_KEY: -4}"
-  echo ""
 
   if [[ "$INSTALL_MODE" == "server" ]]; then
-    echo -e "  ${W}Start the proxy server:${NC}"
-    echo "    ~/.hyper-multi-agent/start-proxy.sh start"
+    echo "  Proxy is managed by HyperAI app."
     echo ""
     echo -e "  ${W}Share with team members:${NC}"
     local external_ip
     external_ip="$(curl -fsSm 3 https://ifconfig.me 2>/dev/null || echo '<your-server-ip>')"
     echo "    Proxy URL: http://${external_ip}:8317"
-    echo "    API Key:   ${API_KEY}"
+    echo "    API Key:   (from HyperAI app Settings > External Access)"
     echo "    Install:   git clone https://github.com/${REPO}.git && cd hyper-multi-agent && ./install.sh --client"
   else
+    echo "  Proxy URL:  ${PROXY_URL}"
+    [[ -n "${API_KEY:-}" ]] && echo "  API Key:    ${API_KEY:0:8}...${API_KEY: -4}"
+    echo ""
     echo "  Ready to use! Just restart Claude Code."
   fi
 
@@ -574,7 +431,6 @@ main() {
   [[ -z "$INSTALL_MODE" ]] && select_mode
   collect_config
   configure_claude
-  [[ "$INSTALL_MODE" == "server" ]] && generate_proxy_scripts
   ok "Reconfiguration complete. Restart Claude Code."
   exit 0
 }

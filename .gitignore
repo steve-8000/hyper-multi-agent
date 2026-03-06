@@ -1,3 +1,10 @@
+# Build artifacts
+app/build/
+app/.build/
+app/Sources/Resources/hyper-ai-proxy
+app/Sources/Resources/hyper-mcp
+app/Sources/Resources/cli-proxy-api-plus
+
 # User-specific config (contains IPs, API keys)
 state.env
 config.env
@@ -12,3 +19,4 @@ Thumbs.db
 .env
 .env.*
 mcp.json
+app/go-proxy/hyper-mcp
