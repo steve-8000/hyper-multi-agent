@@ -5,19 +5,35 @@ Claude Code를 **컨트롤타워**로 활용하여 여러 AI 모델에 작업을
 
 ## Quick Install
 
+### Server (프록시를 호스팅하는 머신)
+
 ```bash
 git clone https://github.com/steve-8000/hyper-multi-agent.git
 cd hyper-multi-agent
-./install.sh
+./install.sh --server
 ```
 
-설치 스크립트가 대화형으로 필요한 정보를 물어봅니다:
+설치 후 프록시 시작:
+```bash
+~/.hyper-multi-agent/start-proxy.sh start
+```
 
+설치가 끝나면 팀원에게 공유할 정보가 출력됩니다:
 ```
-  Proxy Server URL [http://127.0.0.1:8317]: ← 로컬 또는 외부 IP
-  Ollama URL [http://localhost:11434]:       ← 로컬 모델 서버
-  API Key [(none)]:                          ← 외부 접근 시 필수
+  Proxy URL: http://<your-ip>:8317
+  API Key:   hyper-xxxxxxxx...
 ```
+
+### Client (팀원 / 원격 접속자)
+
+```bash
+git clone https://github.com/steve-8000/hyper-multi-agent.git
+cd hyper-multi-agent
+./install.sh --client
+```
+
+서버 관리자에게 받은 **Proxy URL**과 **API Key**만 입력하면 끝입니다.
+`hyper-mcp` 바이너리 하나만 다운로드되고, 프록시 서버는 설치하지 않습니다.
 
 > IP 주소와 API 키는 로컬(`~/.hyper-multi-agent/state.env`)에만 저장되며, 레포에는 절대 포함되지 않습니다.
 
@@ -62,38 +78,26 @@ User: "REST API with auth 만들어줘"
 
 ## What `install.sh` Does
 
+### Server mode (`--server`)
+
 | 단계 | 내용 |
 |------|------|
-| [1/6] Preflight | python3, curl 확인, 플랫폼 감지 |
-| [2/6] Configuration | Proxy URL, Ollama URL, API Key 입력 |
-| [3/6] Binaries | hyper-mcp, hyper-ai-proxy, cli-proxy-api-plus 자동 탐색/다운로드 |
-| [4/6] Proxy Scripts | start-proxy.sh 생성 (start/stop/restart/status) |
-| [5/6] Claude Plugin | 플러그인 설치, mcp.json 구성, 권한 설정 |
-| [6/6] Verify | 모든 파일 존재 확인, 프록시 연결 테스트 |
+| Mode | 서버/클라이언트 선택 |
+| Preflight | python3, curl 확인, 플랫폼 감지 |
+| Config | Ollama URL, API Key 입력 (자동 생성 가능) |
+| Binaries | hyper-mcp + hyper-ai-proxy + cli-proxy-api-plus 설치 |
+| Proxy | start-proxy.sh 생성 (start/stop/restart/status) |
+| Plugin | Claude Code 플러그인 + mcp.json + 권한 설정 |
+| Verify | 바이너리, 플러그인, 프록시 연결 확인 |
 
-## Remote / Team Setup
+### Client mode (`--client`)
 
-### 서버 운영자
-
-```bash
-# 서버에서 설치
-./install.sh
-# Proxy URL: http://127.0.0.1:8317
-# API Key: my-team-secret-key
-
-# 프록시 시작 (외부 접근 가능)
-~/.hyper-multi-agent/start-proxy.sh start
-```
-
-API Key를 설정하면 자동으로 `0.0.0.0`에 바인딩되어 외부에서 접근 가능합니다.
-
-### 팀원 (원격 접속)
-
-```bash
-./install.sh
-# Proxy URL: http://server-ip:8317    ← 서버 IP 입력
-# API Key: my-team-secret-key          ← 서버와 동일한 키
-```
+| 단계 | 내용 |
+|------|------|
+| Config | Proxy URL + API Key 입력 (서버 관리자에게 받은 값) |
+| Binary | **hyper-mcp만** 다운로드 (프록시 바이너리 불필요) |
+| Plugin | Claude Code 플러그인 + mcp.json + 권한 설정 |
+| Verify | hyper-mcp, 플러그인, 프록시 연결 확인 |
 
 ## Commands
 
